@@ -1,6 +1,6 @@
 # PdoDb
 
-PdoDb is a lightweight, production‑ready database abstraction layer built on top of PHP's PDO extension. It ships with a secure query builder, statement caching, nested transactions and support for MySQL, MariaDB, PostgreSQL, SQLite and SQL Server.
+PdoDb is a lightweight, production‑ready database abstraction layer for PHP's PDO extension. It features a secure query builder, statement caching, nested transactions and support for MySQL, MariaDB, PostgreSQL, SQLite and SQL Server.
 
 ## Installation
 
@@ -10,7 +10,7 @@ Install via [Composer](https://getcomposer.org/):
 composer require lakshanjs/pdodb
 ```
 
-## Initialization
+## Getting started
 
 ### Simple initialization
 
@@ -51,7 +51,7 @@ $db->setPrefix('my_');
 
 ### Auto reconnect
 
-If the connection is dropped PdoDb will attempt to reconnect once by default. Disable this behaviour via:
+If the connection is dropped PdoDb will attempt to reconnect by default. Disable this behaviour via:
 
 ```php
 $db->autoReconnect = false;
@@ -89,334 +89,196 @@ $db->addConnection('slave', [
 $users = $db->connection('slave')->get('users');
 ```
 
-## Objects mapping
+## Result formats
 
-`dbObject` is an object mapping layer built on top of PdoDb. See the dbObject manual for detailed usage.
-
-## Insert Query
-
-### Simple example
+Return types can be adjusted per query:
 
 ```php
-$data = ['login' => 'admin', 'firstName' => 'John', 'lastName' => 'Doe'];
-$id = $db->insert('users', $data);
+$db->jsonBuilder()->get('users');
+$db->arrayBuilder()->get('users');
+$db->objectBuilder()->get('users');
 ```
 
-### Insert with helpers and functions
+## Running queries
+
+### Selecting data
 
 ```php
-$data = [
-    'login'     => 'admin',
-    'active'    => true,
-    'firstName' => 'John',
-    'lastName'  => 'Doe',
-    'password'  => $db->func('SHA1(?)', ['secret']),
-    'createdAt' => $db->now(),
-    'expires'   => $db->now('+1Y'),
-];
-
-$id = $db->insert('users', $data);
-if (!$id) {
-    echo 'insert failed: ' . $db->getLastError();
-}
+$users = $db->get('users');
+$user  = $db->getOne('users');
+$count = $db->getValue('users', 'count(*)');
+$exists = $db->where('id', 1)->has('users');
+$top   = $db->withTotalCount()->get('users', [0, 10]);
+echo $db->totalCount; // total rows matching the query
 ```
 
-### Insert with on duplicate key update
+### Inserting data
 
 ```php
-$data = [
-    'login'     => 'admin',
-    'firstName' => 'John',
-    'lastName'  => 'Doe',
-    'createdAt' => $db->now(),
-    'updatedAt' => $db->now(),
-];
-$updateColumns = ['updatedAt'];
-$lastInsertId  = 'id';
-$db->onDuplicate($updateColumns, $lastInsertId);
-$id = $db->insert('users', $data);
-```
-
-### Insert multiple datasets at once
-
-```php
-$data = [
-    ['login' => 'admin', 'firstName' => 'John',   'lastName' => 'Doe'],
-    ['login' => 'other', 'firstName' => 'Another','lastName' => 'User', 'password' => 'hash'],
-];
-$ids = $db->insertMulti('users', $data);
-```
-
-If all datasets have identical keys you can pass a list of keys separately:
-
-```php
-$data = [
-    ['admin', 'John',   'Doe'],
-    ['other', 'Another','User'],
-];
-$keys = ['login', 'firstName', 'lastName'];
-$ids  = $db->insertMulti('users', $data, $keys);
-```
-
-## Replace Query
-
-```php
+$id = $db->insert('users', ['login' => 'admin']);
+$ids = $db->insertMulti('users', [
+    ['login' => 'a'],
+    ['login' => 'b']
+]);
+$db->onDuplicate(['lastLogin' => $db->now()]);
+$db->insert('users', ['id' => 1, 'login' => 'admin']);
 $db->replace('users', ['id' => 1, 'login' => 'admin']);
 ```
 
-## Update Query
+### Updating data
 
 ```php
-$data = [
-    'firstName' => 'Bobby',
-    'lastName'  => 'Tables',
-    'editCount' => $db->inc(2),  // editCount = editCount + 2
-    'active'    => $db->not(),   // active = !active
-];
-$db->where('id', 1);
-$db->update('users', $data);
+$db->where('id', 1)->update('users', [
+    'views' => $db->inc(),
+    'expires' => $db->now('+1 day')
+]);
 ```
 
-Limit updates:
+### Deleting data
 
 ```php
-$db->update('users', $data, 10); // UPDATE users SET ... LIMIT 10
+$db->where('id', 1)->delete('users');
 ```
 
-## Select Query
+### Raw queries
 
 ```php
-$users = $db->get('users');          // all users
-$users = $db->get('users', 10);      // limit 10 users
-
-$cols  = ['id', 'name', 'email'];
-$users = $db->get('users', null, $cols);
-
-$db->where('id', 1);
-$user = $db->getOne('users');
-
-$stats = $db->getOne('users', 'SUM(id), COUNT(*) AS cnt');
-
-$count = $db->getValue('users', 'COUNT(*)');
-$logins = $db->getValue('users', 'login', 5);
+$rows  = $db->rawQuery('SELECT * FROM users WHERE id = ?', [1]);
+$row   = $db->rawQueryOne('SELECT * FROM users WHERE id = ?', [1]);
+$value = $db->rawQueryValue('SELECT count(*) FROM users');
+$db->setQueryOption('SQL_NO_CACHE')->query('SELECT * FROM users');
 ```
 
-## Pagination
+## Conditions
 
 ```php
+$db->where('age', 18, '>')->orWhere('status', 'guest');
+$db->whereRaw('JSON_CONTAINS(tags, ?)', ['"php"']);
+$db->having('cnt', 5, '>')->orHaving('cnt', 10, '<');
+$db->havingRaw('SUM(score) > ?', [100]);
+```
+
+## Joins
+
+```php
+$db->join('profiles p', 'u.id = p.user_id', 'LEFT');
+$db->joinWhere('profiles p', 'p.active', 1);
+$users = $db->get('users u');
+```
+
+Aliased joins are supported:
+
+```php
+$db->joinWithAlias('profiles', 'u.id = p.user_id', 'LEFT', 'p');
+```
+
+## Ordering and grouping
+
+```php
+$db->orderBy('createdAt', 'DESC');
+$db->groupBy('status');
+```
+
+## Subqueries and copies
+
+```php
+$sub = PdoDb::subQuery('u');
+$sub->where('active', 1)->get('users');
+$posts = $db->join($sub, 'p.userId=u.id', 'LEFT')->get('posts p');
+
 $page = 1;
-$db->pageLimit = 2; // default 20
-$products = $db->arrayBuilder()->paginate('products', $page);
-echo "showing $page out of " . $db->totalPages;
+$users = $db->paginate('users', $page);
+$total = $db->totalPages;
+
+$mapped = $db->map('id')->get('users');
+$copy = $db->where('active', 1)->copy()->get('users');
 ```
 
-## Result transformation / map
-
-```php
-$user = $db->map('login')->objectBuilder()->getOne('users', 'id,login,createdAt');
-```
-
-## Defining a return type
-
-PdoDb can return results as an array of arrays (default), array of objects or JSON string.
-
-```php
-// Array return type
-$u = $db->getOne('users');
-
-// Object return type
-$u = $db->objectBuilder()->getOne('users');
-
-// Json return type
-$json = $db->jsonBuilder()->getOne('users');
-```
-
-## Running raw SQL queries
-
-```php
-$users = $db->rawQuery('SELECT * FROM users WHERE id >= ?', [10]);
-$user  = $db->rawQueryOne('SELECT * FROM users WHERE id = ?', [10]);
-$pwd   = $db->rawQueryValue('SELECT password FROM users WHERE id = ? LIMIT 1', [10]);
-```
-
-## Where / Having Methods
-
-```php
-$db->where('id', 1);
-$db->where('login', 'admin');
-$db->get('users');
-
-$db->where('id', 50, '>=');
-$db->where('id', [4, 20], 'BETWEEN');
-$db->where('id', [1,5,27,-1,'d'], 'IN');
-$db->where('id', null, 'IS NOT');
-$db->where('fullName', 'John%', 'LIKE');
-$db->orWhere('firstName', 'Peter');
-$db->where('id != companyId');
-$db->where('(id = ? OR id = ?)', [6,2]);
-```
-
-Same methods exist for `having()` and `orHaving()`.
-
-## Query Keywords
-
-```php
-$db->setQueryOption('LOW_PRIORITY')->insert('table', $data);
-$db->setQueryOption('FOR UPDATE')->get('users');
-$db->setQueryOption(['LOW_PRIORITY','IGNORE'])->insert('table', $data);
-```
-
-## Delete Query
-
-```php
-$db->where('id', 1);
-$db->delete('users');
-```
-
-## Ordering method
-
-```php
-$db->orderBy('id', 'asc');
-$db->orderBy('login', 'Desc');
-$db->orderBy('RAND ()');
-$db->get('users');
-
-$db->orderBy('userGroup', 'ASC', ['superuser','admin','users']);
-```
-
-## Grouping method
-
-```php
-$db->groupBy('name')->get('users');
-```
-
-## JOIN method
-
-```php
-$db->join('users u', 'p.tenantID=u.tenantID', 'LEFT');
-$db->where('u.id', 6);
-$products = $db->get('products p', null, 'u.name, p.productName');
-```
-
-### Join conditions
-
-```php
-$db->join('users u', 'p.tenantID=u.tenantID', 'LEFT');
-$db->joinWhere('users u', 'u.tenantID', 5);
-$db->joinOrWhere('users u', 'u.tenantID', 5);
-```
-
-## Properties sharing
-
-```php
-$db->where('agentId', 10);
-$db->where('active', true);
-
-$customers = $db->copy();
-$res = $customers->get('customers', [10,10]);
-$cnt = $db->getValue('customers', 'count(id)');
-```
-
-## Subqueries
-
-```php
-$sq = $db->subQuery();
-$sq->get('users');
-
-$ids = $db->subQuery();
-$ids->where('qty', 2, '>');
-$ids->get('products', null, 'userId');
-$db->where('id', $ids, 'IN')->get('users');
-
-$userIdQ = $db->subQuery();
-$userIdQ->where('id', 6);
-$userIdQ->getOne('users', 'name');
-$data = ['productName' => 'test', 'userId' => $userIdQ, 'lastUpdated' => $db->now()];
-$db->insert('products', $data);
-
-$usersQ = $db->subQuery('u');
-$usersQ->where('active', 1);
-$usersQ->get('users');
-$db->join($usersQ, 'p.userId=u.id', 'LEFT');
-$products = $db->get('products p', null, 'u.login, p.productName');
-```
-
-### EXISTS / NOT EXISTS
-
-```php
-$sub = $db->subQuery();
-$sub->where('company', 'testCompany');
-$sub->get('users', null, 'userId');
-$db->where(null, $sub, 'exists');
-$products = $db->get('products');
-```
-
-## Has method
-
-```php
-$db->where('user', $user);
-$db->where('password', md5($password));
-if ($db->has('users')) {
-    // logged in
-}
-```
-
-## Helper methods
-
-```php
-$db->disconnect();
-if (!$db->ping()) {
-    $db->connect();
-}
-
-$db->get('users');
-echo $db->getLastQuery();
-
-if ($db->tableExists('users')) {
-    echo 'ok';
-}
-
-$escaped = $db->escape("' and 1=1");
-```
-
-### Transaction helpers
+## Transactions
 
 ```php
 $db->startTransaction();
-if (!$db->insert('myTable', $data)) {
+if (!$db->insert('log', ['msg' => 'test'])) {
     $db->rollback();
 } else {
     $db->commit();
 }
 ```
 
-### Error helpers
-
-```php
-$db->where('login', 'admin')->update('users', ['firstName' => 'Jack']);
-if ($db->getLastErrno() === 0) {
-    echo 'Update successful';
-} else {
-    echo 'Update failed: ' . $db->getLastError();
-}
-```
-
-### Query execution time benchmarking
-
-```php
-$db->setTrace(true);
-$db->get('users');
-print_r($db->trace);
-```
-
-### Table locking
+## Table locking
 
 ```php
 $db->setLockMethod('WRITE')->lock('users');
-$db->unlock();
-$db->setLockMethod('READ')->lock(['users','log']);
+// ... queries ...
 $db->unlock();
 ```
+
+## Connection and utility methods
+
+```php
+$db->disconnect('slave');
+$db->disconnectAll();
+$db->ping();
+$exists = $db->tableExists('users');
+$escaped = $db->escape("' and 1=1");
+$id = $db->getInsertId();
+$error = $db->getLastError();
+$query = $db->getLastQuery();
+$db->clearStmtCache();
+print_r($db->getCacheStats());
+$db->setTrace(true);
+print_r($db->getTrace());
+```
+
+Security logging:
+
+```php
+$db->setSecurityLogCallback(function($type, $msg) {
+    error_log("[$type] $msg");
+});
+$db->setSecurityLogging(false); // disable
+$status = $db->getSecurityStatus();
+```
+
+## Helper expressions
+
+```php
+$db->update('users', [
+    'visits' => $db->inc(),
+    'quota'  => $db->dec(5),
+    'note'   => $db->not('note'),
+    'hash'   => $db->func('SHA1(?)', ['secret'])
+]);
+```
+
+## API reference
+
+| Method | Description |
+| --- | --- |
+| `connect`, `disconnect`, `disconnectAll`, `connection`, `addConnection`, `pdo`, `mysqli` | Connection management |
+| `jsonBuilder`, `arrayBuilder`, `objectBuilder` | Set result format |
+| `setPrefix` | Set table prefix |
+| `rawQuery`, `rawQueryOne`, `rawQueryValue`, `query` | Execute raw SQL queries |
+| `setQueryOption` | Set SQL query options |
+| `withTotalCount` | Calculate total row count |
+| `get`, `getOne`, `getValue`, `has` | Retrieve data |
+| `insert`, `insertMulti`, `replace`, `onDuplicate` | Insert data |
+| `update`, `delete` | Modify data |
+| `where`, `orWhere`, `whereRaw`, `having`, `orHaving`, `havingRaw` | Filtering |
+| `join`, `joinWithAlias`, `joinWhere`, `joinOrWhere` | Join tables |
+| `orderBy`, `groupBy` | Sorting and grouping |
+| `subQuery`, `getSubQuery`, `copy`, `map`, `paginate` | Subqueries and pagination |
+| `startTransaction`, `commit`, `rollback`, `_transaction_status_check` | Transaction control |
+| `setLockMethod`, `lock`, `unlock` | Table locking |
+| `escape`, `getInsertId`, `getLastError`, `getLastErrno`, `getLastQuery` | Utility getters |
+| `setTrace`, `getTrace`, `getLastTrace`, `clearTrace` | Query tracing |
+| `inc`, `dec`, `not`, `func`, `now`, `interval` | Expression helpers |
+| `ping` | Check connection |
+| `clearStmtCache`, `getCacheStats` | Statement cache control |
+| `tableExists`, `isValidIdentifier` | Database metadata helpers |
+| `setSecurityLogCallback`, `setSecurityLogging`, `getSecurityStatus` | Security logging |
+| `getVersion`, `getMysqlVersion` | Version info |
+| `getInstance`, `subQuery` | Static helpers |
 
 ## License
 
