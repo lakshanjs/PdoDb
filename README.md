@@ -271,6 +271,295 @@ $db->update('users', [
 ]);
 ```
 
+## 1) Basic SELECT with WHERE, ORDER BY, LIMIT/OFFSET
+
+**SQL**
+```sql
+SELECT id, email
+FROM users
+WHERE status = 'active' AND created_at >= '2025-01-01'
+ORDER BY created_at DESC
+LIMIT 10 OFFSET 20;
+```
+
+**PdoDb**
+```php
+$users = $db
+    ->where('status', 'active')
+    ->where('created_at', '2025-01-01', '>=')
+    ->orderBy('createdAt', 'DESC')
+    ->get('users', [20, 10], ['id', 'email']);
+```
+
+---
+
+## 2) SELECT with OR condition
+
+**SQL**
+```sql
+SELECT *
+FROM users
+WHERE role = 'admin' OR role = 'manager';
+```
+
+**PdoDb**
+```php
+$rows = $db
+    ->where('role', 'admin')
+    ->orWhere('role', 'manager')
+    ->get('users');
+```
+
+---
+
+## 3) INNER/LEFT JOIN with aliased tables
+
+**SQL**
+```sql
+SELECT u.id, u.email, p.full_name
+FROM users AS u
+LEFT JOIN profiles AS p ON u.id = p.user_id
+WHERE p.active = 1
+ORDER BY u.id ASC;
+```
+
+**PdoDb**
+```php
+$rows = $db
+    ->join('profiles p', 'u.id = p.user_id', 'LEFT')
+    ->joinWhere('profiles p', 'p.active', 1)
+    ->orderBy('u.id', 'ASC')
+    ->get('users u', null, ['u.id', 'u.email', 'p.full_name']);
+```
+
+(Alternate with auto alias)
+```php
+$rows = $db
+    ->joinWithAlias('profiles', 'u.id = p.user_id', 'LEFT', 'p')
+    ->joinWhere('profiles p', 'p.active', 1)
+    ->get('users u');
+```
+
+---
+
+## 4) GROUP BY + HAVING
+
+**SQL**
+```sql
+SELECT status, COUNT(*) AS cnt
+FROM users
+GROUP BY status
+HAVING COUNT(*) > 5
+ORDER BY cnt DESC;
+```
+
+**PdoDb**
+```php
+$rows = $db
+    ->groupBy('status')
+    ->having('COUNT(*)', 5, '>')
+    ->orderBy('cnt', 'DESC')
+    ->get('users', null, ['status', 'COUNT(*) AS cnt']);
+```
+
+---
+
+## 5) INSERT (single row) + ON DUPLICATE KEY UPDATE
+
+**SQL**
+```sql
+INSERT INTO users (id, login, last_login)
+VALUES (1, 'admin', NOW())
+ON DUPLICATE KEY UPDATE
+  login = VALUES(login),
+  last_login = VALUES(last_login);
+```
+
+**PdoDb**
+```php
+$db->onDuplicate([
+    'login'     => $db->func('VALUES(login)'),
+    'lastLogin' => $db->func('VALUES(last_login)')
+]);
+
+$db->insert('users', [
+    'id'        => 1,
+    'login'     => 'admin',
+    'last_login'=> $db->now()
+]);
+```
+
+(Repo also shows `onDuplicate(['lastLogin' => $db->now()])` and `replace(...)` as options. :contentReference[oaicite:1]{index=1})
+
+---
+
+## 6) INSERT multiple rows
+
+**SQL**
+```sql
+INSERT INTO tags (name) VALUES ('php'), ('pdo'), ('security');
+```
+
+**PdoDb**
+```php
+$db->insertMulti('tags', [
+    ['name' => 'php'],
+    ['name' => 'pdo'],
+    ['name' => 'security'],
+]);
+```
+
+---
+
+## 7) UPDATE with expressions (INC/DEC/NOW/FUNC/NOT)
+
+**SQL**
+```sql
+UPDATE users
+SET views = views + 1,
+    quota = quota - 5,
+    expires = NOW() + INTERVAL 1 DAY,
+    note = NOT note
+WHERE id = 42;
+```
+
+**PdoDb**
+```php
+$db->where('id', 42)->update('users', [
+    'views'   => $db->inc(),
+    'quota'   => $db->dec(5),
+    'expires' => $db->now('+1 day'),
+    'note'    => $db->not('note'),
+]);
+```
+
+---
+
+## 8) DELETE with condition
+
+**SQL**
+```sql
+DELETE FROM sessions
+WHERE user_id = 7 AND last_seen < '2025-01-01';
+```
+
+**PdoDb**
+```php
+$db->where('user_id', 7)
+   ->where('last_seen', '2025-01-01', '<')
+   ->delete('sessions');
+```
+
+---
+
+## 9) Subquery in a JOIN
+
+**SQL**
+```sql
+SELECT p.id, p.title, u.email
+FROM posts AS p
+LEFT JOIN (
+  SELECT id, email
+  FROM users
+  WHERE active = 1
+) AS u ON p.user_id = u.id;
+```
+
+**PdoDb**
+```php
+$sub = PdoDb::subQuery('u');
+$sub->where('active', 1)->get('users', null, ['id', 'email']);
+
+$rows = $db
+    ->join($sub, 'p.user_id = u.id', 'LEFT')
+    ->get('posts p', null, ['p.id', 'p.title', 'u.email']);
+```
+
+(Subquery + join usage is shown in README. :contentReference[oaicite:2]{index=2})
+
+---
+
+## 10) Pagination with total pages
+
+**SQL (concept)**
+```sql
+-- Page 3, 10 per page:
+SELECT * FROM users ORDER BY id LIMIT 10 OFFSET 20;
+-- Then run a separate COUNT(*) to get total pages server-side.
+```
+
+**PdoDb**
+```php
+$page  = 3;
+$users = $db->orderBy('id', 'ASC')->paginate('users', $page, 10);
+$total = $db->totalPages; // provided by withTotalCount logic inside paginate
+```
+
+(Pagination and `totalPages` are documented. :contentReference[oaicite:3]{index=3})
+
+---
+
+## 11) Raw query (when you must)
+
+**SQL**
+```sql
+SELECT * FROM users WHERE id = ?;
+```
+
+**PdoDb**
+```php
+$row = $db->rawQueryOne('SELECT * FROM users WHERE id = ?', [1]);
+```
+
+---
+
+## 12) Transactions
+
+**SQL (concept)**
+```sql
+START TRANSACTION;
+INSERT INTO log (msg) VALUES ('test');
+COMMIT;
+-- or ROLLBACK on failure
+```
+
+**PdoDb**
+```php
+$db->startTransaction();
+if (!$db->insert('log', ['msg' => 'test'])) {
+    $db->rollback();
+} else {
+    $db->commit();
+}
+```
+
+---
+
+## 13) JSON/Array/Object result formats
+
+```php
+$json  = $db->jsonBuilder()->get('users');
+$array = $db->arrayBuilder()->get('users');
+$obj   = $db->objectBuilder()->get('users');
+```
+
+---
+
+## 14) WITH TOTAL COUNT window (e.g., “show me top 10 + total”)
+
+**SQL (concept)**
+```sql
+SELECT SQL_CALC_FOUND_ROWS * FROM users LIMIT 10;
+SELECT FOUND_ROWS();
+```
+
+**PdoDb**
+```php
+$top = $db->withTotalCount()->get('users', [0, 10]);
+$total = $db->totalCount;
+```
+
+
 ## API reference
 
 ### Connection management
