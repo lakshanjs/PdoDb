@@ -1,0 +1,48 @@
+{
+  "name": "lakshanjs/pdodb",
+  "description": "Production-ready PDO database abstraction for PHP with a secure query builder, statement caching, nested transactions, and MySQL 8+ compatibility.",
+  "type": "library",
+  "license": "GPL-3.0-or-later",
+  "keywords": ["pdo", "database", "query-builder", "mysql", "pgsql", "sqlite", "sqlsrv", "php"],
+  "homepage": "https://github.com/lakshanjs/PdoDb",
+  "support": {
+    "issues": "https://github.com/lakshanjs/PdoDb/issues",
+    "source": "https://github.com/lakshanjs/PdoDb"
+  },
+  "authors": [
+    {
+      "name": "Lakshan Jayasinghe",
+      "homepage": "https://github.com/lakshanjs"
+    }
+  ],
+  "require": {
+    "php": "^8.0",
+    "ext-pdo": "*"
+  },
+  "suggest": {
+    "ext-pdo_mysql": "For MySQL/MariaDB connections",
+    "ext-pdo_pgsql": "For PostgreSQL connections",
+    "ext-pdo_sqlite": "For SQLite connections",
+    "ext-sqlsrv": "For Microsoft SQL Server (Windows)",
+    "ext-pdo_sqlsrv": "PDO driver for SQL Server"
+  },
+  "autoload": {
+    "psr-4": {
+      "Lakshanjs\\PdoDb\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Lakshanjs\\PdoDb\\Tests\\": "tests/"
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "scripts": {
+    "test": "phpunit --colors=always",
+    "lint": "php -l src/PdoDb.php"
+  },
+  "archive": {
+    "exclude": [".github", "tests", "docs", "phpunit.xml", ".editorconfig", ".php-cs-fixer.php"]
+  }
+}
