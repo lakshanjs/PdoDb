@@ -2488,7 +2488,11 @@ class PdoDb
     }
 
     /**
-     * Helper functions for inc/dec/not/func
+     * Helper function to generate increment expressions for UPDATE queries.
+     *
+     * @param int|float $num Amount to increment by
+     * @return array Expression wrapper understood by the query builder
+     * @throws Exception
      */
     public function inc($num = 1)
     {
@@ -2498,6 +2502,13 @@ class PdoDb
         return array("[I]" => "+" . $num);
     }
 
+    /**
+     * Helper function to generate decrement expressions for UPDATE queries.
+     *
+     * @param int|float $num Amount to decrement by
+     * @return array Expression wrapper understood by the query builder
+     * @throws Exception
+     */
     public function dec($num = 1)
     {
         if (!is_numeric($num)) {
@@ -2506,21 +2517,49 @@ class PdoDb
         return array("[I]" => "-" . $num);
     }
 
+    /**
+     * Helper function to wrap NOT expressions.
+     *
+     * @param string|null $col Column or expression to negate
+     * @return array Expression wrapper understood by the query builder
+     */
     public function not($col = null)
     {
         return array("[N]" => (string)$col);
     }
 
+    /**
+     * Helper to insert raw SQL functions into queries.
+     *
+     * @param string $expr Function expression, e.g. "NOW()"
+     * @param array|null $bindParams Optional parameters for the expression
+     * @return array Expression wrapper understood by the query builder
+     */
     public function func($expr, $bindParams = null)
     {
         return array("[F]" => array($expr, $bindParams));
     }
 
+    /**
+     * Helper to generate a SQL datetime function with optional interval.
+     *
+     * @param string|null $diff Interval modifier (e.g. "+1 day")
+     * @param string $func Base SQL function, defaults to NOW()
+     * @return array Expression wrapper understood by the query builder
+     */
     public function now($diff = null, $func = "NOW()")
     {
         return array("[F]" => array($this->interval($diff, $func)));
     }
 
+    /**
+     * Build a SQL interval expression.
+     *
+     * @param string $diff Interval definition (e.g. "+1 day")
+     * @param string $func Base SQL function, defaults to NOW()
+     * @return string Generated SQL
+     * @throws Exception
+     */
     public function interval($diff, $func = "NOW()")
     {
         $types = array("s" => "second", "m" => "minute", "h" => "hour", "d" => "day", "M" => "month", "Y" => "year");
