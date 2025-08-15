@@ -36,6 +36,26 @@ $db = new PdoDb([
 
 Table prefix, port and charset are optional. To skip setting a charset, set `charset` to `null`.
 
+### Selecting the driver
+
+PdoDb uses the MySQL driver by default. To connect to other databases, specify the driver as the
+final constructor argument or via a `driver` configuration key. Supported drivers are `mysql`,
+`pgsql`, `sqlite` and `sqlsrv`.
+
+```php
+// Pass driver as the last parameter
+$db = new PdoDb('host', 'username', 'password', 'databaseName', 3306, 'utf8mb4', 'pgsql');
+
+// Or define it in the configuration array
+$db = new PdoDb([
+    'host'     => 'host',
+    'username' => 'username',
+    'password' => 'password',
+    'db'       => 'databaseName',
+    'driver'   => 'sqlsrv',
+]);
+```
+
 ### Reuse existing PDO connection
 
 ```php
@@ -253,32 +273,345 @@ $db->update('users', [
 
 ## API reference
 
-| Method | Description |
-| --- | --- |
-| `connect`, `disconnect`, `disconnectAll`, `connection`, `addConnection`, `pdo`, `mysqli` | Connection management |
-| `jsonBuilder`, `arrayBuilder`, `objectBuilder` | Set result format |
-| `setPrefix` | Set table prefix |
-| `rawQuery`, `rawQueryOne`, `rawQueryValue`, `query` | Execute raw SQL queries |
-| `setQueryOption` | Set SQL query options |
-| `withTotalCount` | Calculate total row count |
-| `get`, `getOne`, `getValue`, `has` | Retrieve data |
-| `insert`, `insertMulti`, `replace`, `onDuplicate` | Insert data |
-| `update`, `delete` | Modify data |
-| `where`, `orWhere`, `whereRaw`, `having`, `orHaving`, `havingRaw` | Filtering |
-| `join`, `joinWithAlias`, `joinWhere`, `joinOrWhere` | Join tables |
-| `orderBy`, `groupBy` | Sorting and grouping |
-| `subQuery`, `getSubQuery`, `copy`, `map`, `paginate` | Subqueries and pagination |
-| `startTransaction`, `commit`, `rollback`, `_transaction_status_check` | Transaction control |
-| `setLockMethod`, `lock`, `unlock` | Table locking |
-| `escape`, `getInsertId`, `getLastError`, `getLastErrno`, `getLastQuery` | Utility getters |
-| `setTrace`, `getTrace`, `getLastTrace`, `clearTrace` | Query tracing |
-| `inc`, `dec`, `not`, `func`, `now`, `interval` | Expression helpers |
-| `ping` | Check connection |
-| `clearStmtCache`, `getCacheStats` | Statement cache control |
-| `tableExists`, `isValidIdentifier` | Database metadata helpers |
-| `setSecurityLogCallback`, `setSecurityLogging`, `getSecurityStatus` | Security logging |
-| `getVersion`, `getMysqlVersion` | Version info |
-| `getInstance`, `subQuery` | Static helpers |
+### Connection management
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `connect` | Establish a connection to the configured database. | ```php
+$db->connect();
+``` |
+| `disconnect` | Close a specific connection. | ```php
+$db->disconnect('slave');
+``` |
+| `disconnectAll` | Close all active connections. | ```php
+$db->disconnectAll();
+``` |
+| `connection` | Switch to a named connection. | ```php
+$db->connection('slave')->get('users');
+``` |
+| `addConnection` | Register an additional connection. | ```php
+$db->addConnection('slave', [...]);
+``` |
+| `pdo` | Retrieve the underlying PDO instance. | ```php
+$pdo = $db->pdo();
+``` |
+
+### Set result format
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `jsonBuilder` | Return results as JSON strings. | ```php
+$db->jsonBuilder()->get('users');
+``` |
+| `arrayBuilder` | Return results as arrays. | ```php
+$db->arrayBuilder()->get('users');
+``` |
+| `objectBuilder` | Return results as stdClass objects. | ```php
+$db->objectBuilder()->get('users');
+``` |
+
+### Set table prefix
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `setPrefix` | Set table name prefix. | ```php
+$db->setPrefix('my_');
+``` |
+
+### Execute raw SQL queries
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `rawQuery` | Run a raw SQL query. | ```php
+$db->rawQuery('SELECT 1');
+``` |
+| `rawQueryOne` | Fetch a single row from a raw SQL query. | ```php
+$db->rawQueryOne('SELECT * FROM users WHERE id = ?', [1]);
+``` |
+| `rawQueryValue` | Fetch a single value from a raw SQL query. | ```php
+$db->rawQueryValue('SELECT COUNT(*) FROM users');
+``` |
+| `query` | Execute a prepared statement with bindings. | ```php
+$db->query('SELECT * FROM users WHERE id = :id', [':id' => 1]);
+``` |
+
+### SQL options
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `setQueryOption` | Set SQL query options. | ```php
+$db->setQueryOption('SQL_NO_CACHE');
+``` |
+| `withTotalCount` | Calculate total row count for the last query. | ```php
+$db->withTotalCount()->get('users');
+``` |
+
+### Retrieve data
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `get` | Fetch rows from a table. | ```php
+$users = $db->get('users');
+``` |
+| `getOne` | Fetch the first matching row. | ```php
+$user = $db->getOne('users');
+``` |
+| `getValue` | Fetch a single column value. | ```php
+$count = $db->getValue('users', 'COUNT(*)');
+``` |
+| `has` | Check if records exist. | ```php
+$exists = $db->where('id',1)->has('users');
+``` |
+
+### Insert data
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `insert` | Insert a row into a table. | ```php
+$id = $db->insert('users', ['login' => 'admin']);
+``` |
+| `insertMulti` | Insert multiple rows. | ```php
+$db->insertMulti('users', [['login' => 'a'], ['login' => 'b']]);
+``` |
+| `replace` | Replace existing row (MySQL). | ```php
+$db->replace('users', ['id' => 1, 'login' => 'admin']);
+``` |
+| `onDuplicate` | Define data for ON DUPLICATE KEY UPDATE. | ```php
+$db->onDuplicate(['login' => 'new']);
+``` |
+
+### Modify data
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `update` | Update existing rows. | ```php
+$db->where('id',1)->update('users',['login'=>'u']);
+``` |
+| `delete` | Remove rows from a table. | ```php
+$db->where('id',1)->delete('users');
+``` |
+
+### Filtering
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `where` | Add a WHERE condition. | ```php
+$db->where('id',1);
+``` |
+| `orWhere` | Add an OR WHERE condition. | ```php
+$db->orWhere('status','active');
+``` |
+| `whereRaw` | Add raw WHERE expression. | ```php
+$db->whereRaw('id > ?', [10]);
+``` |
+| `having` | Add a HAVING condition. | ```php
+$db->having('COUNT(id)', 1);
+``` |
+| `orHaving` | Add an OR HAVING condition. | ```php
+$db->orHaving('SUM(score)', '>', 10);
+``` |
+| `havingRaw` | Add raw HAVING expression. | ```php
+$db->havingRaw('SUM(score) > ?', [10]);
+``` |
+
+### Join tables
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `join` | Join another table. | ```php
+$db->join('profiles p', 'u.id = p.user_id', 'LEFT');
+``` |
+| `joinWithAlias` | Join using automatic aliasing. | ```php
+$db->joinWithAlias('profiles', 'u.id = p.user_id', 'LEFT', 'p');
+``` |
+| `joinWhere` | Add a WHERE clause on joined table. | ```php
+$db->joinWhere('profiles p', 'p.active', 1);
+``` |
+| `joinOrWhere` | Add an OR WHERE clause on joined table. | ```php
+$db->joinOrWhere('profiles p', 'p.active', 0);
+``` |
+
+### Sorting and grouping
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `orderBy` | Order the results. | ```php
+$db->orderBy('createdAt', 'DESC');
+``` |
+| `groupBy` | Group the results. | ```php
+$db->groupBy('status');
+``` |
+
+### Subqueries and pagination
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `subQuery` | Create a subquery builder. | ```php
+$sub = PdoDb::subQuery('u');
+``` |
+| `getSubQuery` | Retrieve SQL of a subquery. | ```php
+$sql = $sub->getSubQuery();
+``` |
+| `copy` | Clone current query builder. | ```php
+$copy = $db->copy();
+``` |
+| `map` | Map results by a column. | ```php
+$mapped = $db->map('id')->get('users');
+``` |
+| `paginate` | Retrieve paginated results. | ```php
+$users = $db->paginate('users', 1);
+``` |
+
+### Transaction control
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `startTransaction` | Begin a transaction. | ```php
+$db->startTransaction();
+``` |
+| `commit` | Commit the current transaction. | ```php
+$db->commit();
+``` |
+| `rollback` | Roll back the current transaction. | ```php
+$db->rollback();
+``` |
+
+### Table locking
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `setLockMethod` | Define lock method. | ```php
+$db->setLockMethod('WRITE');
+``` |
+| `lock` | Lock tables. | ```php
+$db->lock('users');
+``` |
+| `unlock` | Unlock tables. | ```php
+$db->unlock();
+``` |
+
+### Utility getters
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `escape` | Escape a string. | ```php
+$escaped = $db->escape("' and 1=1");
+``` |
+| `getInsertId` | Get last inserted ID. | ```php
+$id = $db->getInsertId();
+``` |
+| `getLastError` | Get last error message. | ```php
+$error = $db->getLastError();
+``` |
+| `getLastErrno` | Get last error number. | ```php
+$errno = $db->getLastErrno();
+``` |
+| `getLastQuery` | Get last executed query. | ```php
+$query = $db->getLastQuery();
+``` |
+
+### Query tracing
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `setTrace` | Enable or disable tracing. | ```php
+$db->setTrace(true);
+``` |
+| `getTrace` | Get trace log. | ```php
+$trace = $db->getTrace();
+``` |
+| `getLastTrace` | Get last trace entry. | ```php
+$last = $db->getLastTrace();
+``` |
+| `clearTrace` | Clear trace log. | ```php
+$db->clearTrace();
+``` |
+
+### Expression helpers
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `inc` | Increment a numeric column. | ```php
+$db->update('users',['visits'=>$db->inc()]);
+``` |
+| `dec` | Decrement a numeric column. | ```php
+$db->update('users',['quota'=>$db->dec(5)]);
+``` |
+| `not` | Apply NOT operator to a column. | ```php
+$db->update('users',['active'=>$db->not('active')]);
+``` |
+| `func` | Use a custom SQL function. | ```php
+$db->update('users',['hash'=>$db->func('SHA1(?)',['secret'])]);
+``` |
+| `now` | Use current timestamp. | ```php
+$db->insert('log',['created'=>$db->now()]);
+``` |
+| `interval` | Use an INTERVAL expression. | ```php
+$db->where('created_at', $db->interval('-1', 'DAY'), '>');
+``` |
+
+### Connection utilities
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `ping` | Check the connection is alive. | ```php
+$db->ping();
+``` |
+
+### Statement cache control
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `clearStmtCache` | Clear prepared statement cache. | ```php
+$db->clearStmtCache();
+``` |
+| `getCacheStats` | Get cache stats. | ```php
+$stats = $db->getCacheStats();
+``` |
+
+### Database metadata helpers
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `tableExists` | Check if a table exists. | ```php
+$exists = $db->tableExists('users');
+``` |
+| `isValidIdentifier` | Validate identifier name. | ```php
+$valid = $db->isValidIdentifier('users');
+``` |
+
+### Security logging
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `setSecurityLogCallback` | Set callback for security logs. | ```php
+$db->setSecurityLogCallback(fn($t,$m)=>error_log("[$t] $m"));
+``` |
+| `setSecurityLogging` | Enable or disable security logging. | ```php
+$db->setSecurityLogging(false);
+``` |
+| `getSecurityStatus` | Get logging status. | ```php
+$status = $db->getSecurityStatus();
+``` |
+
+### Version info
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `getVersion` | Get library version. | ```php
+$version = $db->getVersion();
+``` |
+| `getMysqlVersion` | Get MySQL server version. | ```php
+$mysql = $db->getMysqlVersion();
+``` |
+
+### Static helpers
+
+| Method | Description | Example |
+| --- | --- | --- |
+| `getInstance` | Retrieve singleton instance of PdoDb. | ```php
+$db = PdoDb::getInstance();
+``` |
 
 ## License
 
