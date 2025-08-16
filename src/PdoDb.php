@@ -1357,11 +1357,11 @@ class PdoDb
      * 
      * @param string $tableName Table name
      * @param array $multiInsertData Multi-dimensional array of data
-     * @param array $dataKeys Column names
+     * @param array|null $dataKeys Column names
      * @return bool|array Insert IDs or false
      * @throws Exception
      */
-    public function insertMulti($tableName, array $multiInsertData, array $dataKeys = null)
+    public function insertMulti($tableName, array $multiInsertData, ?array $dataKeys = null)
     {
         $autoCommit = ($this->_transactionLevel === 0);
         $ids = array();
