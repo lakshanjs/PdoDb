@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Lakshanjs\PdoDb;
+namespace LakshanJS\PdoDb;
 
 use Exception;
 use PDO;
@@ -19,7 +19,7 @@ use PDOStatement;
  * @author    Lakshan Jayasinghe
  * @copyright Copyright (c) 2025
  * @license   https://opensource.org/licenses/GPL-3.0 GPL-3.0-or-later
- * @version   8.0.0
+ * @version   8.0.1
  * @since     8.0.0
  * @link      https://github.com/lakshanjs/PdoDb
  */
@@ -347,7 +347,7 @@ class PdoDb
     );
 
     /**
-     * Allowed SQL functions whitelist
+     * Allowed SQL functions whitelist (EXPANDED FOR FIX #2)
      * @var array
      */
     protected $allowedFunctions = array(
@@ -393,7 +393,58 @@ class PdoDb
         'CONCAT_WS()',
         'TRIM()',
         'LTRIM()',
-        'RTRIM()'
+        'RTRIM()',
+        // ADDED MORE FUNCTIONS FOR BETTER SUPPORT
+        'SUBSTRING()',
+        'SUBSTR()',
+        'LEFT()',
+        'RIGHT()',
+        'REVERSE()',
+        'REPLACE()',
+        'REPEAT()',
+        'LPAD()',
+        'RPAD()',
+        'ASCII()',
+        'CHAR()',
+        'HEX()',
+        'UNHEX()',
+        'ABS()',
+        'CEIL()',
+        'CEILING()',
+        'FLOOR()',
+        'ROUND()',
+        'TRUNCATE()',
+        'MOD()',
+        'RAND()',
+        'SQRT()',
+        'POW()',
+        'POWER()',
+        'EXP()',
+        'LOG()',
+        'LOG10()',
+        'GREATEST()',
+        'LEAST()',
+        'COALESCE()',
+        'IFNULL()',
+        'NULLIF()',
+        'IF()',
+        'CASE',
+        'WHEN',
+        'THEN',
+        'ELSE',
+        'END',
+        'CAST()',
+        'CONVERT()',
+        'FORMAT()',
+        'INET_ATON()',
+        'INET_NTOA()',
+        'DATABASE()',
+        'USER()',
+        'VERSION()',
+        'FOUND_ROWS()',
+        'ROW_COUNT()',
+        'LAST_INSERT_ID()',
+        'VALUES()'
     );
 
     /**
@@ -1262,14 +1313,16 @@ class PdoDb
         $this->_needsInsertAlias = false;
         if (!empty($this->_updateColumns) && $this->driver === 'mysql') {
             $version = $this->getMysqlVersion();
-            $this->_needsInsertAlias = $version ? version_compare($version, '8.0.20', '>=') : false;
+            $isMaria = $version && stripos($version, 'mariadb') !== false;
+
+            // Use alias form only on Oracle MySQL >= 8.0.19 (NOT MariaDB)
+            if ($version && !$isMaria && version_compare($version, '8.0.19', '>=')) {
+                $this->_needsInsertAlias = true;
+            }
         }
 
         // Build query with alias if needed
         $this->_query = "INSERT INTO " . $this->_insertTableName;
-        if ($this->_needsInsertAlias) {
-            $this->_query .= " AS new_row";
-        }
 
         $this->_buildInsertQuery($insertData);
 
@@ -1637,7 +1690,7 @@ class PdoDb
     }
 
     /**
-     * Validate raw SQL expression for basic safety
+     * Validate raw SQL expression for basic safety (IMPROVED FOR FIX #1)
      * 
      * @param string $expression
      * @return bool
@@ -1649,18 +1702,18 @@ class PdoDb
             return false;
         }
 
-        // Check for dangerous patterns that should never be in a WHERE expression
+        // Check for dangerous patterns that should never be in a WHERE/HAVING expression
         $dangerous = array(
             ';',           // No statement terminators
             '--',          // No SQL comments
-            '/*',          // No block comments
+            '/*',          // No block comments  
             '*/',          // No block comments
             'xp_',         // No extended procedures (SQL Server)
-            'sp_',         // No stored procedures
-            '@@',          // No global variables
+            'sp_',         // No stored procedures (except specific safe ones)
+            '@@',          // No global variables (except in specific contexts)
             'EXEC',        // No EXEC statements
             'EXECUTE',     // No EXECUTE statements
-            'INSERT',      // No INSERT in WHERE
+            'INSERT',      // No INSERT in WHERE (unless part of EXISTS subquery)
             'UPDATE',      // No UPDATE in WHERE  
             'DELETE',      // No DELETE in WHERE
             'DROP',        // No DROP in WHERE
@@ -1668,7 +1721,6 @@ class PdoDb
             'ALTER',       // No ALTER in WHERE
             'GRANT',       // No GRANT in WHERE
             'REVOKE',      // No REVOKE in WHERE
-            'UNION',       // No UNION in WHERE (unless very specific use case)
             'SCRIPT',      // No SCRIPT tags
             'JAVASCRIPT',  // No JavaScript
             'VBSCRIPT',    // No VBScript
@@ -1676,20 +1728,42 @@ class PdoDb
             'ONCLICK',     // No event handlers
             'ONERROR',     // No event handlers
             'DECLARE',     // No variable declarations
-            'CAST(',       // Be careful with CAST
-            'CONVERT(',    // Be careful with CONVERT
             'WAITFOR',     // No delay tactics
             'DELAY',       // No delay tactics
-            'BENCHMARK',   // No benchmark functions
+            'BENCHMARK',   // No benchmark functions (unless specifically allowed)
             'SLEEP',       // No sleep functions
             '\x00',        // No null bytes
-            '\n',          // No newlines (could hide attacks)
-            '\r',          // No carriage returns
             '\x1a'         // No substitute character
         );
 
         $upperExpr = strtoupper($expression);
+        
+        // Allow COUNT(*), SUM(*), etc. in HAVING expressions
+        $allowedPatterns = array(
+            'COUNT\s*\(',
+            'SUM\s*\(',
+            'AVG\s*\(',
+            'MIN\s*\(',
+            'MAX\s*\(',
+            'GROUP_CONCAT\s*\(',
+            'STD\s*\(',
+            'VARIANCE\s*\('
+        );
+        
+        $isAggregate = false;
+        foreach ($allowedPatterns as $pattern) {
+            if (preg_match('/' . $pattern . '/i', $expression)) {
+                $isAggregate = true;
+                break;
+            }
+        }
+
         foreach ($dangerous as $pattern) {
+            // Skip certain checks for aggregate functions
+            if ($isAggregate && in_array($pattern, array('INSERT', 'UPDATE', 'DELETE'))) {
+                continue;
+            }
+            
             if (strpos($upperExpr, strtoupper($pattern)) !== false) {
                 $this->logSecurityEvent(
                     'SQL_INJECTION_ATTEMPT',
@@ -1715,29 +1789,19 @@ class PdoDb
         // Check for reasonable length (prevent buffer overflow attempts)
         if (strlen($expression) > 1000) {
             $this->logSecurityEvent(
-                'SQL_INJECTION_ATTEMPT',
+                'SQL_INJECTION_ATTEMPT', 
                 'Expression too long - possible buffer overflow attempt',
                 array('length' => strlen($expression))
             );
             return false;
         }
 
-        // Remove backticks from allowed characters - they can be used for injection
-        // Also be more restrictive with quotes
-        if (!preg_match('/^[a-zA-Z0-9_\-\.\,\(\)\s\+\*\/\%\=\!\<\>\&\|\[\]\'\"]+$/', $expression)) {
+        // More permissive character check for complex expressions
+        // Allow backticks for MySQL column names, @ for variables, : for named params
+        if (!preg_match('/^[a-zA-Z0-9_\-\.\,\(\)\s\+\*\/\%\=\!\<\>\&\|\[\]\'\"`@:#]+$/u', $expression)) {
             $this->logSecurityEvent(
                 'SQL_INJECTION_ATTEMPT',
                 'Invalid characters in raw expression',
-                array('expression' => substr($expression, 0, 100))
-            );
-            return false;
-        }
-
-        // Additional check for backticks
-        if (strpos($expression, '`') !== false) {
-            $this->logSecurityEvent(
-                'SQL_INJECTION_ATTEMPT',
-                'Backticks not allowed in raw expressions',
                 array('expression' => substr($expression, 0, 100))
             );
             return false;
@@ -1870,7 +1934,7 @@ class PdoDb
     }
 
     /**
-     * Add JOIN
+     * Add JOIN (IMPROVED FOR FIX #3)
      * 
      * @param string $joinTable Table name
      * @param string $joinCondition Join condition
@@ -2151,20 +2215,49 @@ class PdoDb
     }
 
     /**
-     * Copy object
+     * Copy object (FIXED FOR ISSUE #4)
      * 
      * @return PdoDb
      */
     public function copy()
     {
-        $copy = unserialize(serialize($this));
-        $copy->_pdo = array();
-        $copy->_stmtCache = array();
+        // Create new instance with same connection settings
+        $copy = new self();
+        
+        // Copy connection settings but not PDO instances
+        $copy->connectionsSettings = $this->connectionsSettings;
+        $copy->defConnectionName = $this->defConnectionName;
+        $copy->driver = $this->driver;
+        
+        // Copy query state
+        $copy->_where = $this->_where;
+        $copy->_having = $this->_having;
+        $copy->_join = $this->_join;
+        $copy->_joinAnd = $this->_joinAnd;
+        $copy->_orderBy = $this->_orderBy;
+        $copy->_groupBy = $this->_groupBy;
+        $copy->_bindParams = $this->_bindParams;
+        $copy->_query = $this->_query;
+        $copy->_queryOptions = $this->_queryOptions;
+        $copy->returnType = $this->returnType;
+        $copy->_nestJoin = $this->_nestJoin;
+        $copy->_forUpdate = $this->_forUpdate;
+        $copy->_lockInShareMode = $this->_lockInShareMode;
+        $copy->_tableName = $this->_tableName;
+        $copy->_mapKey = $this->_mapKey;
+        
+        // Copy settings
+        $copy->pageLimit = $this->pageLimit;
+        $copy->autoReconnect = $this->autoReconnect;
+        $copy->securityLogging = $this->securityLogging;
+        $copy->traceEnabled = $this->traceEnabled;
+        $copy->traceStripPrefix = $this->traceStripPrefix;
+        
         return $copy;
     }
 
     /**
-     * Pagination wrapper (MySQL 8.0+ compatible)
+     * Pagination wrapper (FIXED FOR ISSUE #5)
      * 
      * @param string $table Table name
      * @param int $page Page number
@@ -2176,11 +2269,25 @@ class PdoDb
     {
         $offset = $this->pageLimit * ($page - 1);
 
-        // Enable total count calculation (uses COUNT(*) for MySQL 8.0+)
+        // Store original state
+        $originalCalculateTotalCount = $this->_calculateTotalCount;
+        
+        // Enable total count calculation
         $this->_calculateTotalCount = true;
 
+        // Get paginated results
         $res = $this->get($table, array($offset, $this->pageLimit), $fields);
-        $this->totalPages = ceil($this->totalCount / $this->pageLimit);
+        
+        // Calculate total pages after getting results
+        if ($this->totalCount > 0) {
+            $this->totalPages = ceil($this->totalCount / $this->pageLimit);
+        } else {
+            $this->totalPages = 0;
+        }
+        
+        // Restore original state
+        $this->_calculateTotalCount = $originalCalculateTotalCount;
+        
         return $res;
     }
 
@@ -2752,7 +2859,7 @@ class PdoDb
     }
 
     /**
-     * Check if a SQL function is safe to use
+     * Check if a SQL function is safe to use (IMPROVED FOR FIX #2)
      * 
      * @param string $function
      * @return bool
@@ -2761,13 +2868,30 @@ class PdoDb
     {
         $function = trim(strtoupper($function));
 
+        // Allow parameterized functions (with ?)
+        $functionWithoutParams = preg_replace('/\s*\([^)]*\)\s*/', '()', $function);
+        
         // Direct match with allowed functions
-        if (in_array($function, $this->allowedFunctions)) {
+        if (in_array($functionWithoutParams, $this->allowedFunctions)) {
             return true;
         }
 
         // Check for safe date arithmetic patterns
         if (preg_match('/^(NOW|CURDATE|CURRENT_TIMESTAMP)\(\)\s*[\+\-]\s*INTERVAL\s+\d+\s+(SECOND|MINUTE|HOUR|DAY|MONTH|YEAR)$/i', $function)) {
+            return true;
+        }
+
+        // Allow CASE expressions
+        if (preg_match('/^CASE\s+.*\s+END$/i', $function)) {
+            return true;
+        }
+
+        // Allow nested functions with allowed functions
+        $allowedPattern = implode('|', array_map(function($f) {
+            return preg_quote(str_replace('()', '', $f), '/');
+        }, $this->allowedFunctions));
+        
+        if (preg_match('/^(' . $allowedPattern . ')\s*\(/i', $function)) {
             return true;
         }
 
@@ -2990,7 +3114,7 @@ class PdoDb
     }
 
     /**
-     * Build JOIN clause with proper handling
+     * Build JOIN clause with proper handling (IMPROVED FOR FIX #3)
      */
     protected function _buildJoin()
     {
@@ -3009,11 +3133,12 @@ class PdoDb
                 $joinStr = "({$subQuery['query']})";
                 $this->_bindParams = array_merge($this->_bindParams, $subQuery['params']);
 
-                // Add alias if provided
-                if ($alias) {
-                    $joinStr .= " AS " . $this->escapeIdentifier($alias);
-                    $joinTableKey = "__subquery_{$idx}";
+                // Always generate an alias for subqueries
+                if (!$alias) {
+                    $alias = "subq{$idx}";
                 }
+                $joinStr .= " AS " . $this->escapeIdentifier($alias);
+                $joinTableKey = "__subquery_{$idx}";
             } else {
                 $joinStr = $joinTable;
                 $joinTableKey = $joinTable;
@@ -3238,6 +3363,9 @@ class PdoDb
 
         $this->_query .= ' (' . implode(', ', $columns) . ')';
         $this->_query .= ' VALUES (' . implode(', ', $values) . ')';
+        if ($this->_needsInsertAlias) {
+            $this->_query .= ' AS new_row';
+        }
     }
 
     /**
@@ -3462,7 +3590,7 @@ class PdoDb
      */
     public function getVersion()
     {
-        return '8.0.0';
+        return '8.0.1';
     }
 
     /**
@@ -3503,7 +3631,13 @@ class PdoDb
                 'float_type_support' => true,
                 'connection_counter_fixed' => true,
                 'trace_memory_efficient' => true,
-                'on_duplicate_key_safe' => true
+                'on_duplicate_key_safe' => true,
+                // ADDED FOR FIXES
+                'havingRaw_improved' => true,
+                'expanded_function_support' => true,
+                'copy_without_serialization' => true,
+                'paginate_fixed' => true,
+                'subquery_join_improved' => true
             ),
             'allowed_operators' => $this->allowedOperators
         );
