@@ -31,12 +31,12 @@
   },
   "autoload": {
     "psr-4": {
-      "Lakshanjs\\PdoDb\\": "src/"
+      "LakshanJS\\PdoDb\\": "src/"
     }
   },
   "autoload-dev": {
     "psr-4": {
-      "Lakshanjs\\PdoDb\\Tests\\": "tests/"
+      "LakshanJS\\PdoDb\\Tests\\": "tests/"
     }
   },
   "minimum-stability": "stable",

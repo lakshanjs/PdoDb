@@ -1,12 +1,12 @@
 <?php
 /**
  * PdoDb Library Comprehensive Test
- * Tests all major features of the Lakshanjs/PdoDb library
+ * Tests all major features of the LakshanJS/PdoDb library
  */
 
 require_once __DIR__ . '/../vendor/autoload.php'; // Adjust path as needed
 
-use Lakshanjs\PdoDb\PdoDb;
+use LakshanJS\PdoDb\PdoDb;
 
 // Configuration
 $config = [

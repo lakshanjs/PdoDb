@@ -15,7 +15,7 @@ composer require lakshanjs/pdodb
 ### Simple initialization
 
 ```php
-use Lakshanjs\PdoDb\PdoDb;
+use LakshanJS\PdoDb\PdoDb;
 
 $db = new PdoDb('host', 'username', 'password', 'databaseName');
 ```
@@ -117,7 +117,7 @@ updates and transactions—in one place:
 ```php
 require 'vendor/autoload.php';
 
-use Lakshanjs\PdoDb\PdoDb;
+use LakshanJS\PdoDb\PdoDb;
 
 $db = new PdoDb([
     'host'     => 'localhost',

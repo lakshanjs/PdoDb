@@ -1,8 +1,8 @@
 <?php
 
-namespace Lakshanjs\PdoDb\Tests;
+namespace LakshanJS\PdoDb\Tests;
 
-use Lakshanjs\PdoDb\PdoDb;
+use LakshanJS\PdoDb\PdoDb;
 use PHPUnit\Framework\TestCase;
 
 class PdoDbTest extends TestCase
