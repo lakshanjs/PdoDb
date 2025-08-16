@@ -109,6 +109,54 @@ $db->addConnection('slave', [
 $users = $db->connection('slave')->get('users');
 ```
 
+## Quick example
+
+The snippet below demonstrates several common operations—filtering, joins, inserts,
+updates and transactions—in one place:
+
+```php
+require 'vendor/autoload.php';
+
+use Lakshanjs\PdoDb\PdoDb;
+
+$db = new PdoDb([
+    'host'     => 'localhost',
+    'db'       => 'pdodb_test',
+    'username' => 'root',
+    'password' => 'secret',
+    'charset'  => 'utf8mb4',
+]);
+
+// fetch active users
+$activeUsers = $db->where('status', 'active')->get('users');
+
+// join with profiles table
+$usersWithProfiles = $db
+    ->join('profiles p', 'u.id = p.user_id', 'INNER')
+    ->get('users u', null, ['u.email', 'p.full_name']);
+
+// insert a user and update counters
+$userId = $db->insert('users', [
+    'email'      => 'test@example.com',
+    'login'      => 'testuser',
+    'created_at' => $db->now(),
+]);
+
+$db->where('id', $userId)->update('users', [
+    'views'      => $db->inc(),
+    'last_login' => $db->now(),
+]);
+
+// simple transaction
+$db->startTransaction();
+try {
+    $db->insert('log', ['msg' => 'demo', 'created_at' => $db->now()]);
+    $db->commit();
+} catch (Exception $e) {
+    $db->rollback();
+}
+```
+
 ## Result formats
 
 Return types can be adjusted per query:
